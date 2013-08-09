@@ -1,9 +1,10 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
-#include <errno.h>
-#include <sys/socket.h>
-#include <netdb.h>
+#include <openssl/ssl.h>
+#include <openssl/bio.h>
+#include <openssl/err.h>
+#include <openssl/x509.h>
 #include <assert.h>
 #include "socket.h"
 #include "helper.h"
@@ -13,45 +14,73 @@ static char buffer[IRCLEN];
 static char *buf_ptr;
 
 
-int sock_connect(const char *address, const char *port) {
+BIO *sock_connect(const char *address, const char *port) {
 
-	int sock, ret_value;
-	struct addrinfo addr_filter, *addr_holder, *addr_iterator;
+	SSL *ssl;
+	SSL_CTX *ctx;
+	BIO *SSLbio = NULL;
+	X509 *cert;
+	X509_NAME *name;
+	char host[ADDRLEN + PORTLEN + 1], common_name[512];
 
-	// Create filter for getaddrinfo()
-	memset(&addr_filter, 0, sizeof(addr_filter));
-	addr_filter.ai_family   = AF_UNSPEC; 	   // IPv4 or IPv6
-	addr_filter.ai_socktype = SOCK_STREAM; 	   // Stream socket
-	addr_filter.ai_protocol = IPPROTO_TCP;	   // TCP protocol
+	SSL_library_init();
+	SSL_load_error_strings();
+	ERR_load_BIO_strings();
 
-	// Don't try to resolve service -> port, since we already provide it in numeric form
-	addr_filter.ai_flags   |= AI_NUMERICSERV;
-
-	// Return addresses according to the filter criteria
-	ret_value = getaddrinfo(address, port, &addr_filter, &addr_holder);
-	if (ret_value != 0)
-		exit_msg("getaddrinfo: %s", gai_strerror(ret_value));
-
-	sock = -1;
-	for (addr_iterator = addr_holder; addr_iterator != NULL; addr_iterator = addr_holder->ai_next) {
-
-		// Create TCP socket
-		sock = socket(addr_iterator->ai_family, addr_iterator->ai_socktype, addr_iterator->ai_protocol);
-		if (sock < 0)
-			continue; // Failed, try next address
-
-		ret_value = connect(sock, addr_iterator->ai_addr, addr_iterator->ai_addrlen);
-		if (ret_value == 0)
-			break; // Success
-
-		close(sock); // Cleanup and try next address
-		sock = -1;
+	ctx = SSL_CTX_new(SSLv23_client_method());
+	if (ctx == NULL) {
+		fprintf(stderr, "SSL_CTX creation failed\n");
+		goto cleanup;
 	}
-	freeaddrinfo(addr_holder);
-	return sock;
+
+	if (SSL_CTX_load_verify_locations(ctx, SSLSTORE, NULL) == 0) {
+		fprintf(stderr, "Error loading trust store\n");
+		goto cleanup;
+	}
+
+	SSLbio = BIO_new_ssl_connect(ctx);
+	BIO_get_ssl(SSLbio, &ssl);
+	SSL_set_mode(ssl, SSL_MODE_AUTO_RETRY);
+
+	snprintf(host, sizeof(host), "%s:%s", address, port);
+	BIO_set_conn_hostname(SSLbio, host);
+
+	if (BIO_do_connect(SSLbio) <= 0) {
+	   fprintf(stderr, "Error connecting to server\n");
+	   goto cleanup;
+	}
+
+	if (BIO_do_handshake(SSLbio) <= 0) {
+	   fprintf(stderr, "Error establishing SSL connection\n");
+	   goto cleanup;
+	}
+
+	if (SSL_get_verify_result(ssl) == X509_V_OK)
+		cert = SSL_get_peer_certificate(ssl);
+	else {
+		fprintf(stderr, "Error verifying SSL certificate\n");
+		goto cleanup;
+	}
+
+	name = X509_get_subject_name(cert);
+	X509_NAME_get_text_by_NID(name, NID_commonName, common_name, 512);
+
+	// if (strcmp(common_name, address) != 0) {
+	// 	fprintf(stderr, "Common name didn't match hostname\n");
+	// 	goto cleanup;
+	// }
+
+	return SSLbio;
+
+cleanup:
+	ERR_print_errors_fp(stderr);
+	ERR_free_strings();
+	SSL_CTX_free(ctx);
+	BIO_free_all(SSLbio);
+	return NULL;
 }
 
-ssize_t sock_write(int sock, const char *buf, size_t len) {
+ssize_t sock_write(BIO *sock, const char *buf, size_t len) {
 
 	ssize_t n_sent;
 	size_t n_left;
@@ -62,8 +91,8 @@ ssize_t sock_write(int sock, const char *buf, size_t len) {
 	buf_marker = buf;
 
 	while (n_left > 0) {
-		n_sent = write(sock, buf_marker, n_left);
-		if (n_sent < 0 && errno == EINTR) { // Interrupted by signal, retry
+		n_sent = BIO_write(sock, buf_marker, n_left);
+		if (n_sent < 0 && BIO_should_retry(sock)) { // Interrupted by signal, retry
 			n_sent = 0;
 			continue;
 		}
@@ -78,15 +107,15 @@ ssize_t sock_write(int sock, const char *buf, size_t len) {
 }
 
 #ifdef TEST
-	ssize_t sock_readbyte(int sock, char *byte)
+	ssize_t sock_readbyte(BIO *sock, char *byte)
 #else
-	static ssize_t sock_readbyte(int sock, char *byte)
+	static ssize_t sock_readbyte(BIO *sock, char *byte)
 #endif
 {
 	// Stores the character in byte. Returns -1 for fail, 0 if connection is closed or 1 for success
 	while (bytes_read <= 0) {
-		bytes_read = read(sock, buffer, IRCLEN);
-		if (bytes_read < 0 && errno == EINTR) { // Interrupted by signal, retry
+		bytes_read = BIO_read(sock, buffer, IRCLEN);
+		if (bytes_read < 0 && BIO_should_retry(sock)) { // Interrupted by signal, retry
 			bytes_read = 0;
 			continue;
 		}
@@ -105,7 +134,7 @@ ssize_t sock_write(int sock, const char *buf, size_t len) {
 	return 1;
 }
 
-ssize_t sock_readline(int sock, char *line_buf, size_t len) {
+ssize_t sock_readline(BIO *sock, char *line_buf, size_t len) {
 
 	size_t n_read = 0;
 	ssize_t n;

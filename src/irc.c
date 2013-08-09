@@ -7,11 +7,13 @@
 #include <sys/wait.h>
 #include <assert.h>
 #include <signal.h>
+#include <openssl/bio.h>
 #include <curl/curl.h>
 #include "socket.h"
 #include "irc.h"
 #include "gperf.h"
 #include "helper.h"
+
 
 // Wrapper functions. If VA_ARGS is NULL then ':' will be ommited. Do not call _send_irc_command() directly
 // Example: "send_nick_command(server, "newnick_", NULL);" will produce "NICK newnick_"
@@ -27,7 +29,7 @@ struct channels {
 };
 
 struct irc_type {
-	int sock;
+	BIO *sock;
 	char address[ADDRLEN];
 	char port[PORTLEN];
 	char nick[NICKLEN];
@@ -39,14 +41,14 @@ extern pid_t main_pid;
 
 Irc connect_server(const char *address, const char *port) {
 
-	Irc server = malloc_w(sizeof(struct irc_type));
+	Irc server = malloc_w(sizeof(*server));
 
 	// Minimum validity checks
 	if (strchr(address, '.') == NULL || atoi(port) > 65535)
 		return NULL;
 
 	server->sock = sock_connect(address, port);
-	if (server->sock < 0)
+	if (server->sock == NULL)
 		return NULL;
 
 	curl_global_init(CURL_GLOBAL_ALL); // Initialize curl library
@@ -307,8 +309,7 @@ void quit_server(Irc server, const char *msg) {
 	assert(msg != NULL && "Error in quit_server");
 	send_quit_command(server, "", msg);
 
-	if (close(server->sock) < 0)
-		perror("close");
+	BIO_free_all(server->sock);
 
 	curl_global_cleanup();
 	free(server);
