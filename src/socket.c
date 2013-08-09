@@ -25,7 +25,6 @@ BIO *sock_connect(const char *address, const char *port) {
 
 	SSL_library_init();
 	SSL_load_error_strings();
-	ERR_load_BIO_strings();
 
 	ctx = SSL_CTX_new(SSLv23_client_method());
 	if (ctx == NULL) {
@@ -92,11 +91,11 @@ ssize_t sock_write(BIO *sock, const char *buf, size_t len) {
 
 	while (n_left > 0) {
 		n_sent = BIO_write(sock, buf_marker, n_left);
-		if (n_sent < 0 && BIO_should_retry(sock)) { // Interrupted by signal, retry
+		if (n_sent <= 0 && BIO_should_retry(sock)) { // Interrupted by signal, retry
 			n_sent = 0;
 			continue;
 		}
-		else if (n_sent < 0) {
+		else if (n_sent <= 0) {
 			perror("write");
 			return -1;
 		}
