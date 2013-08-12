@@ -51,7 +51,7 @@ int sock_connect(const char *address, const char *port) {
 	return sock;
 }
 
-ssize_t sock_write(int sock, const char *buf, size_t len) {
+ssize_t sock_write(SSL *ssl_handle, const char *buf, size_t len) {
 
 	ssize_t n_sent;
 	size_t n_left;
@@ -62,12 +62,8 @@ ssize_t sock_write(int sock, const char *buf, size_t len) {
 	buf_marker = buf;
 
 	while (n_left > 0) {
-		n_sent = write(sock, buf_marker, n_left);
-		if (n_sent < 0 && errno == EINTR) { // Interrupted by signal, retry
-			n_sent = 0;
-			continue;
-		}
-		else if (n_sent < 0) {
+		n_sent = SSL_write(ssl_handle, buf_marker, n_left);
+		if (n_sent < 0) {
 			perror("write");
 			return -1;
 		}
@@ -78,14 +74,14 @@ ssize_t sock_write(int sock, const char *buf, size_t len) {
 }
 
 #ifdef TEST
-	ssize_t sock_readbyte(int sock, char *byte)
+	ssize_t sock_readbyte(SSL *ssl_handle, char *byte)
 #else
-	static ssize_t sock_readbyte(int sock, char *byte)
+	static ssize_t sock_readbyte(SSL *ssl_handle, char *byte)
 #endif
 {
 	// Stores the character in byte. Returns -1 for fail, 0 if connection is closed or 1 for success
 	while (bytes_read <= 0) {
-		bytes_read = read(sock, buffer, IRCLEN);
+		bytes_read = SSL_read(ssl_handle, buffer, IRCLEN);
 		if (bytes_read < 0 && errno == EINTR) { // Interrupted by signal, retry
 			bytes_read = 0;
 			continue;
@@ -105,14 +101,14 @@ ssize_t sock_write(int sock, const char *buf, size_t len) {
 	return 1;
 }
 
-ssize_t sock_readline(int sock, char *line_buf, size_t len) {
+ssize_t sock_readline(SSL *ssl_handle, char *line_buf, size_t len) {
 
 	size_t n_read = 0;
 	ssize_t n;
 	char byte;
 
 	while (n_read++ <= len) {
-		n = sock_readbyte(sock, &byte);
+		n = sock_readbyte(ssl_handle, &byte);
 		if (n < 0)
 			return -1;
 		else if (n == 0) { // Connection closed, return bytes read so far

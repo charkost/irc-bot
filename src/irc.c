@@ -10,6 +10,7 @@
 #include <curl/curl.h>
 #include <yajl/yajl_tree.h>
 #include "socket.h"
+#include "ssl.h"
 #include "irc.h"
 #include "gperf.h"
 #include "helper.h"
@@ -24,6 +25,8 @@
 
 struct irc_type {
 	int sock;
+	SSL_CTX *ssl_context;
+	SSL *ssl_handle;
 	char address[ADDRLEN];
 	char port[PORTLEN];
 	char nick[NICKLEN];
@@ -49,6 +52,10 @@ Irc connect_server(const char *address, const char *port) {
 	if (server->sock < 0)
 		return NULL;
 
+	// Initialize SSL Layer
+	server->ssl_context = ssl_new_context();
+	server->ssl_handle = ssl_new_handle(server->ssl_context, server->sock);
+	
 	curl_global_init(CURL_GLOBAL_ALL); // Initialize curl library
 	signal(SIGCHLD, SIG_IGN); // Make child processes not leave zombies behind when killed
 	main_pid = getpid(); // store our process id to help exit_msg function exit appropriately
@@ -115,7 +122,7 @@ ssize_t parse_line(Irc server) {
 	// Read raw line from server. Example: ":laxanofido!~laxanofid@snf-23545.vm.okeanos.grnet.gr PRIVMSG #foss-teimes :How YA doing fossbot"
 	// If we don't receive a message within the timer set, exit program (shell script will restart it)
 	alarm(TIMEOUT);
-	n = sock_readline(server->sock, line, IRCLEN);
+	n = sock_readline(server->ssl_handle, line, IRCLEN);
 	alarm(0); // Stop timer. If we reach here, reply was within limits
 
 	if (cfg.verbose)
@@ -215,15 +222,18 @@ void irc_privmsg(Irc server, Parsed_data pdata) {
 		flist = function_lookup(pdata.command, strlen(pdata.command));
 		if (flist == NULL)
 			return;
-
+		
 		// Launch the function in a new process
 		switch (fork()) {
 			case 0:
 				flist->function(server, pdata);
-				_exit(EXIT_SUCCESS);
-			case -1:
-				perror("fork");
+		 		break;
+		 	case -1:
+		 		perror("fork");
+		 	default:
+		 		_exit(EXIT_SUCCESS);
 		}
+
 	}
 	// CTCP requests must be received in private & begin with ascii char 1
 	else if (*pdata.command == '\x01' && pdata.target == pdata.sender) {
@@ -294,7 +304,7 @@ void _send_irc_command(Irc server, const char *type, const char *target, ...) {
 	snprintf(irc_msg, IRCLEN, "%s %s %s%s\r\n", type, target, (*msg ? ":" : ""), msg);
 
 	// Send message & print it on stdout
-	if (sock_write(server->sock, irc_msg, strlen(irc_msg)) < 0)
+	if (sock_write(server->ssl_handle, irc_msg, strlen(irc_msg)) < 0)
 		exit_msg("Failed to send message");
 
 	if (cfg.verbose)
