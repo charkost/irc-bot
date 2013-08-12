@@ -1,13 +1,13 @@
 {
 	"server": "chat.freenode.net",
-	"port": 6667,
+	"port": 6697,
 	"nick": "fossbot",
 	"nick_pwd": "xxxxxxxx",
 	"user": "bot",
 	"channels": [ "#foss-teimes", "#fossbot" ],
 
 	// Set to false to mute all messages
-	"verbose": true,
+	"verbose": false,
 
 	// Default repo to substitute when not provided
 	"github_repo": "foss-teimes",
