@@ -34,6 +34,8 @@ SSL *ssl_new_handle(SSL_CTX *ssl_context, int sock) {
 	if (SSL_connect(ssl_handle) != 1)
 		ERR_print_errors_fp(stderr);
 
+	SSL_set_mode(ssl_handle, SSL_MODE_AUTO_RETRY);
+
 	return ssl_handle;
 }
 
