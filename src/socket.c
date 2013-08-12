@@ -63,7 +63,10 @@ ssize_t sock_write(SSL *ssl_handle, const char *buf, size_t len) {
 
 	while (n_left > 0) {
 		n_sent = SSL_write(ssl_handle, buf_marker, n_left);
-		if (n_sent < 0) {
+		if (n_sent <= 0 && SSL_get_error(ssl_handle, n_sent) == SSL_ERROR_WANT_WRITE) { //Wants retry
+			continue;
+		}
+		else if (n_sent <= 0) {
 			perror("write");
 			return -1;
 		}
@@ -79,19 +82,20 @@ ssize_t sock_write(SSL *ssl_handle, const char *buf, size_t len) {
 	static ssize_t sock_readbyte(SSL *ssl_handle, char *byte)
 #endif
 {
-	// Stores the character in byte. Returns -1 for fail, 0 if connection is closed or 1 for success
+	// Stores the character in byte. Returns <=0 for fail, >0 for success
 	while (bytes_read <= 0) {
 		bytes_read = SSL_read(ssl_handle, buffer, IRCLEN);
-		if (bytes_read < 0 && errno == EINTR) { // Interrupted by signal, retry
+		if (bytes_read <= 0 && SSL_get_error(ssl_handle, bytes_read) == SSL_ERROR_WANT_READ) { // Interrupted by signal, retry
 			bytes_read = 0;
 			continue;
 		}
-		else if (bytes_read < 0) {
+		else if (bytes_read <= 0 && SSL_get_error(ssl_handle, bytes_read) == SSL_ERROR_ZERO_RETURN) { // Connection closed
+			return 0;
+		}
+		else if (bytes_read <= 0) {
 			perror("read");
 			return -1;
 		}
-		else if (bytes_read == 0) // Connection closed
-			return 0;
 
 		buf_ptr = buffer;
 	}
