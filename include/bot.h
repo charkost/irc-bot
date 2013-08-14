@@ -3,13 +3,16 @@
 
 #include "irc.h"
 
-#define MAXCOMMITS   10
-#define MAXPINGCOUNT 10
-#define REPOLEN      60
-#define CMDLEN       200
+#define MAXCOMMITS 10
+#define MAXPINGS   10
+#define REPOLEN    80
+#define QUOTELEN   150
 
 // Irc color codes
+#define COLOR   RESET
 #define RESET   "\x03"
+#define WHITE   "\x03""0"
+#define BLACK   "\x03""1"
 #define BLUE    "\x03""2"
 #define GREEN   "\x03""3"
 #define RED     "\x03""4"
@@ -24,6 +27,7 @@
 #define PINK    "\x03""13"
 #define GREY    "\x03""14"
 #define LTGREY  "\x03""15"
+#define COLORCOUNT 16
 
 // *** All BOT functions in this file are running in a new process. They will not crash main program in case of failure ***
 
@@ -44,7 +48,7 @@ void mumble(Irc server, Parsed_data pdata);
 void bot_fail(Irc server, Parsed_data pdata);
 
 // Print available commands
-void list(Irc server, Parsed_data pdata);
+void help(Irc server, Parsed_data pdata);
 
 // Print latest repo commits
 void github(Irc server, Parsed_data pdata);

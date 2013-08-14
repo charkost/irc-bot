@@ -4,17 +4,30 @@
 	"nick": "fossbot",
 	"nick_pwd": "xxxxxxxx",
 	"user": "bot",
-	"channels": [ "#foss-teimes", "#fossbot" ],
+	"channels": [ "#foss-teimes" ],
+	"quit_message": "segfault",
 
-	// Set to false to mute all messages
-	"verbose": false,
-
-	// Default repo to substitute when not provided
-	"github_repo": "foss-teimes",
+	// Set to false to only show errors
+	"verbose": true,
 
 	// String to reply on ctcp version
 	"bot_version": "foss-tesyd bot",
 
-	// Where to find the test input files (only for running tests)
-	"test_dir": "file:///home/free/programming/c/irc-bot/test-files/"
+	// Default repo to substitute when not provided for the github command
+	"github_repo": "foss-teimes",
+
+	// Multiline quote sentences must be seperated by the newline character (\n)
+	// Newline char is optional if the sentence is the last OR the only one from a quote
+	// If a color is provided to a quote starting with a number, a space must be added to avoid messing with the escape sequence
+	"fail_quotes":
+	[
+		"I mpala einai strogili\nto gipedo einai paralilogramo\n 11 autoi, 11 emeis sinolo 23\nkai tha boun kai 3 allages apo kathe omada sinolo 29!",
+		"fail indeed",
+		"fail den les tipota",
+		"popo, ti eipes twra\nemeina me anoixto to... programma",
+		"Exeis dei file I/O me threads sto linux?",
+		"Kai ta Ubuntu kala einai",
+		"kapote hmoun fanatikos tis micro$oft",
+		"Linux edw, Linux ekei, Linux kai parapera, Linux ston ourano... Linux kai ston aera!"
+	]
 }

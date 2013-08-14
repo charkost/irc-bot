@@ -4,7 +4,6 @@
 #include <string.h>
 #include <stdarg.h>
 #include <sys/types.h>
-#include <sys/wait.h>
 #include <assert.h>
 #include <signal.h>
 #include <curl/curl.h>
@@ -55,7 +54,7 @@ Irc connect_server(const char *address, const char *port) {
 	// Initialize SSL Layer
 	server->ssl_context = ssl_new_context();
 	server->ssl_handle = ssl_new_handle(server->ssl_context, server->sock);
-	
+
 	curl_global_init(CURL_GLOBAL_ALL); // Initialize curl library
 	signal(SIGCHLD, SIG_IGN); // Make child processes not leave zombies behind when killed
 	main_pid = getpid(); // store our process id to help exit_msg function exit appropriately
@@ -90,7 +89,6 @@ void set_channels(Irc server, char *channels[], int channels_set) {
 	int i;
 
 	for (i = 0; i < channels_set; i++) {
-		puts(channels[i]);
 		assert(channels[i] != NULL   && "Error in set_channel");
 		assert(channels[i][0] == '#' && "Missing # in channel");
 		strncpy(server->ch.channels[server->ch.channels_set++], channels[i], CHANLEN);
@@ -172,13 +170,13 @@ ssize_t parse_line(Irc server) {
 int numeric_reply(Irc server, int reply) {
 
 	switch (reply) {
-		case NICKNAMEINUSE: // Change our nick
-			strcat(server->nick, "_");
-			set_nick(server, server->nick);
-			break;
-		case ENDOFMOTD: // Join all channels registered with set_channel() after receiving MOTD
-			join_channel(server, NULL);
-			break;
+	case NICKNAMEINUSE: // Change our nick
+		strcat(server->nick, "_");
+		set_nick(server, server->nick);
+		break;
+	case ENDOFMOTD: // Join all channels registered with set_channel() after receiving MOTD
+		join_channel(server, NULL);
+		break;
 	}
 	return reply;
 }
@@ -222,16 +220,16 @@ void irc_privmsg(Irc server, Parsed_data pdata) {
 		flist = function_lookup(pdata.command, strlen(pdata.command));
 		if (flist == NULL)
 			return;
-		
+
 		// Launch the function in a new process
 		switch (fork()) {
-			case 0:
-				flist->function(server, pdata);
-		 		break;
-		 	case -1:
-		 		perror("fork");
-		 	default:
-		 		_exit(EXIT_SUCCESS);
+		case 0:
+			flist->function(server, pdata);
+	 		break;
+	 	case -1:
+	 		perror("fork");
+	 	default:
+	 		_exit(EXIT_SUCCESS);
 		}
 
 	}
@@ -243,6 +241,8 @@ void irc_privmsg(Irc server, Parsed_data pdata) {
 }
 
 void irc_notice(Irc server, Parsed_data pdata) {
+
+	bool temp;
 
 	// notice destination
 	pdata.target = strtok(pdata.message, " ");
@@ -258,10 +258,11 @@ void irc_notice(Irc server, Parsed_data pdata) {
 	pdata.message++;
 
 	if (strncmp(pdata.message, "This nickname is registered", 27) == 0) {
+		temp = cfg.verbose;
 		cfg.verbose = false;
 		send_message(server, "nickserv", "identify %s", cfg.nick_pwd);
 		memset(cfg.nick_pwd, 0, strlen(cfg.nick_pwd));
-		cfg.verbose = true;
+		cfg.verbose = temp;
 	}
 }
 
